@@ -1,6 +1,6 @@
 ---
 name: labcrew
-description: Use LabCrew for graduate research workflows: read local papers, create literature cards, inspect Zotero items or collections, sync reading status, draft research proposals, and generate slide plans through the LabCrew MCP server or CLI.
+description: "Use LabCrew for graduate research workflows: read local papers, create literature cards, inspect Zotero items or collections, sync reading status, draft research proposals, and generate slide plans through the LabCrew MCP server or CLI."
 ---
 
 # LabCrew
