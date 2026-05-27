@@ -30,7 +30,7 @@ class FakeNotionAdapter:
         self.queries.append(("title", title))
         return self.existing_by_title
 
-    def create_literature_card(self, card: LiteratureCard) -> NotionPageRef:
+    def create_literature_card(self, card: LiteratureCard, status: str = "Read") -> NotionPageRef:
         self.created.append(card)
         return NotionPageRef(page_id="new-page", url="https://notion.test/new-page", title=card.title)
 

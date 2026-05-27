@@ -15,6 +15,17 @@ class JournalStore:
         self.root_dir = root_dir or Path("data/journals")
         self.today = today
 
+    def list_entry_titles(self) -> set[str]:
+        """Return the set of paper titles found across all journal entries."""
+        titles: set[str] = set()
+        if not self.root_dir.exists():
+            return titles
+        for journal_path in self.root_dir.rglob("*.md"):
+            content = journal_path.read_text(encoding="utf-8")
+            for match in re.finditer(r"<!-- labcrew-card:.*? -->\n## (.+)", content):
+                titles.add(match.group(1).strip())
+        return titles
+
     def save_paper_card(
         self,
         paper: Paper,

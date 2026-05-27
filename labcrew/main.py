@@ -10,12 +10,18 @@ from labcrew.workflows import (
     create_literature_card,
     deep_read_method,
     design_experiment,
+    extract_slide_materials,
     generate_idea,
+    make_academic_html_slides,
+    make_html_slides,
     make_presentation,
+    plan_academic_slides,
+    plan_collection_reading,
     propose_research,
     read_paper,
     read_zotero_item,
     research_strategy,
+    update_reading_status,
 )
 
 
@@ -80,6 +86,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     slides_parser = subparsers.add_parser("make-slides", help="Create a slide plan from a paper source.")
     slides_parser.add_argument("source")
+    slides_parser.add_argument(
+        "--format", default="plan", choices=["plan", "html"],
+        help="Output format: plan (SlidePlan JSON, default) or html (self-contained HTML)."
+    )
+
+    academic_slides = subparsers.add_parser(
+        "academic-slides",
+        help="Run the staged academic slide workflow: materials, plan, or html.",
+    )
+    academic_slides.add_argument("source")
+    academic_slides.add_argument(
+        "--stage",
+        default="materials",
+        choices=["materials", "plan", "html"],
+        help="Workflow stage to run before user review.",
+    )
+    academic_slides.add_argument("--audience", default="research group")
+    academic_slides.add_argument("--duration-minutes", type=int, default=10)
+    academic_slides.add_argument(
+        "--profile",
+        default="ai-research",
+        choices=["ai-research", "standard"],
+        help="Slide planning profile.",
+    )
+    academic_slides.add_argument(
+        "--materials",
+        nargs="*",
+        default=[],
+        help="User-provided screenshots, Markdown files, Word .docx files, or folders to include as slide materials.",
+    )
 
     experiment_parser = subparsers.add_parser(
         "design-experiment",
@@ -121,6 +157,18 @@ def build_parser() -> argparse.ArgumentParser:
     zotero_read.add_argument("--notion", action="store_true", help="Save the literature card to Notion.")
     zotero_read.add_argument("--cards", action="store_true", help="Save the literature card as a local Markdown file (CardStore).")
 
+    zotero_plan = zotero_sub.add_parser("plan", help="Generate a reading plan from a Zotero collection.")
+    zotero_plan.add_argument("--collection", required=True, help="Collection key to generate a reading plan for.")
+    zotero_plan.add_argument("--batch-size", type=int, default=5, help="Number of papers to suggest in the next batch (default: 5).")
+
+    zotero_status = zotero_sub.add_parser("status", help="Update reading status of a Zotero item.")
+    zotero_status.add_argument("--key", required=True, help="Zotero item key.")
+    zotero_status.add_argument(
+        "--status", required=True, choices=["unread", "reading", "read", "skipped"],
+        help="New reading status."
+    )
+    zotero_status.add_argument("--notion", action="store_true", help="Also push the status update to the linked Notion page.")
+
     return parser
 
 
@@ -150,6 +198,17 @@ def _handle_zotero(args: argparse.Namespace) -> Any:
             journal_period=args.journal_period,
             save_to_notion=args.notion,
             save_to_cards=args.cards,
+        )
+    if args.zotero_command == "plan":
+        return plan_collection_reading(
+            collection_key=args.collection,
+            batch_size=args.batch_size,
+        )
+    if args.zotero_command == "status":
+        return update_reading_status(
+            zotero_key=args.key,
+            status=args.status,
+            sync_to_notion=args.notion,
         )
     raise ValueError(f"Unknown zotero command: {args.zotero_command}")
 
@@ -190,7 +249,33 @@ def main(argv: list[str] | None = None) -> None:
             )
         )
     elif args.command == "make-slides":
-        _print_result(make_presentation(args.source))
+        if args.format == "html":
+            _print_result(make_html_slides(args.source))
+        else:
+            _print_result(make_presentation(args.source))
+    elif args.command == "academic-slides":
+        if args.stage == "materials":
+            _print_result(extract_slide_materials(args.source, material_paths=args.materials, profile=args.profile))
+        elif args.stage == "plan":
+            _print_result(
+                plan_academic_slides(
+                    args.source,
+                    material_paths=args.materials,
+                    audience=args.audience,
+                    duration_minutes=args.duration_minutes,
+                    profile=args.profile,
+                )
+            )
+        else:
+            _print_result(
+                make_academic_html_slides(
+                    args.source,
+                    material_paths=args.materials,
+                    audience=args.audience,
+                    duration_minutes=args.duration_minutes,
+                    profile=args.profile,
+                )
+            )
     elif args.command == "design-experiment":
         _print_result(design_experiment(args.research_question))
     elif args.command == "propose-research":

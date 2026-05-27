@@ -25,7 +25,7 @@ class NotionSyncAgent(BaseAgent):
             raise ValueError("NotionSyncAgent requires a LiteratureCard payload.")
         return TaskResult(task_id=task.task_id, agent_name=self.name, data=self.publish_card(card))
 
-    def publish_card(self, card: LiteratureCard) -> dict[str, object]:
+    def publish_card(self, card: LiteratureCard, status: str = "To Read") -> dict[str, object]:
         config = load_config().notion
         api_key = config.settings.get("api_key", "")
         database_id = config.settings.get("database_id", "")
@@ -42,8 +42,37 @@ class NotionSyncAgent(BaseAgent):
             if existing:
                 return {"status": "already_exists", "page_id": existing.page_id, "url": existing.url}
 
-            ref = adapter.create_literature_card(card)
+            ref = adapter.create_literature_card(card, status=status)
             return {"status": "created", "page_id": ref.page_id, "url": ref.url}
         except Exception as exc:
             logger.warning("Failed to save card to Notion: %s", exc)
+            return {"status": "error", "reason": str(exc)}
+
+    def sync_status(self, zotero_key: str, status: str) -> dict[str, object]:
+        """Update the reading status on an existing Notion page.
+
+        Looks up the Notion page via ZoteroLinkStore, then patches the Status property.
+        """
+        from labcrew.config import load_config as _load_config
+        from labcrew.tools.zotero_link_store import ZoteroLinkStore, to_notion_status
+
+        config = _load_config()
+        api_key = config.notion.settings.get("api_key", "")
+        database_id = config.notion.settings.get("database_id", "")
+        if not api_key or not database_id:
+            return {"status": "skipped", "reason": "NOTION_API_KEY or NOTION_DATABASE_ID not set"}
+
+        with ZoteroLinkStore(db_path=config.link_store_path) as store:
+            row = store.get(zotero_key)
+        if not row or not row.get("notion_page_id"):
+            return {"status": "skipped", "reason": "No Notion page linked for this Zotero key"}
+
+        notion_status = to_notion_status(status)
+
+        try:
+            adapter = self.adapter_factory(api_key, database_id)
+            adapter.update_card_status(row["notion_page_id"], notion_status)
+            return {"status": "updated", "notion_status": notion_status, "page_id": row["notion_page_id"]}
+        except Exception as exc:
+            logger.warning("Failed to update Notion status: %s", exc)
             return {"status": "error", "reason": str(exc)}

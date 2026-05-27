@@ -27,6 +27,47 @@ class CardStore:
             "title": card.title,
         }
 
+    def list_card_zotero_keys(self) -> set[str]:
+        """Return the set of zotero_keys found across all local card files."""
+        keys: set[str] = set()
+        for card_path in self.root_dir.glob("*.md"):
+            frontmatter = self._read_frontmatter(card_path)
+            zk = frontmatter.get("zotero_key", "").strip()
+            if zk:
+                keys.add(zk)
+        return keys
+
+    def list_synced_zotero_keys(self) -> set[str]:
+        """Return the set of zotero_keys that have a non-empty notion_url in their card file."""
+        keys: set[str] = set()
+        for card_path in self.root_dir.glob("*.md"):
+            frontmatter = self._read_frontmatter(card_path)
+            zk = frontmatter.get("zotero_key", "").strip()
+            nu = frontmatter.get("notion_url", "").strip()
+            if zk and nu:
+                keys.add(zk)
+        return keys
+
+    def _read_frontmatter(self, path: Path) -> dict[str, str]:
+        """Parse YAML frontmatter from a card file without a YAML library."""
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            return {}
+        end = text.find("---", 3)
+        if end == -1:
+            return {}
+        fm_text = text[3:end]
+        result: dict[str, str] = {}
+        for line in fm_text.splitlines():
+            line = line.strip()
+            if ":" not in line:
+                continue
+            key, _, value = line.partition(":")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            result[key] = value
+        return result
+
     def update_notion_url(self, file_path: str | Path, notion_url: str) -> bool:
         fp = Path(file_path)
         if not fp.exists():

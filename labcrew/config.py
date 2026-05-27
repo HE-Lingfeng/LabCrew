@@ -31,6 +31,10 @@ class LabCrewConfig:
     def artifacts_dir(self) -> Path:
         return self.workspace / "artifacts"
 
+    @property
+    def link_store_path(self) -> Path:
+        return self.workspace / "zotero_links.db"
+
 
 def default_config() -> LabCrewConfig:
     return LabCrewConfig()

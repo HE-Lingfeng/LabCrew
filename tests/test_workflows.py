@@ -3,14 +3,15 @@ from __future__ import annotations
 import tempfile
 import unittest
 import warnings
+import zipfile
 from datetime import date
 from pathlib import Path
 
 from labcrew.agents import PaperIngestAgent
-from labcrew.schemas import ExperimentPlan, LiteratureCard, MethodDeepDive, Paper, PaperCardReport, PaperJournalRecord, PaperReadingReport, ResearchProposal, SlidePlan
+from labcrew.schemas import ExperimentPlan, LiteratureCard, MethodDeepDive, Paper, PaperCardReport, PaperJournalRecord, PaperReadingReport, ResearchProposal, SlideMaterialLibrary, SlidePlan
 from labcrew.schemas import Task, TaskType
 from labcrew.tools import JournalStore, PDFParser, TextChunker
-from labcrew.workflows import create_literature_card, deep_read_method, design_experiment, make_presentation, propose_research, read_paper
+from labcrew.workflows import create_literature_card, deep_read_method, design_experiment, extract_slide_materials, make_presentation, plan_academic_slides, propose_research, read_paper
 
 
 def build_minimal_pdf() -> bytes:
@@ -64,6 +65,21 @@ def build_pdf_with_architecture_figure(path: Path) -> None:
     page.insert_text((95, 455), "Figure 1: Model architecture and pipeline overview.", fontsize=11)
     document.save(path)
     document.close()
+
+
+def build_minimal_docx(path: Path, paragraphs: list[str]) -> None:
+    body = "".join(
+        f"<w:p><w:r><w:t>{paragraph}</w:t></w:r></w:p>"
+        for paragraph in paragraphs
+    )
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{body}</w:body>"
+        "</w:document>"
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", document_xml)
 
 
 class WorkflowTests(unittest.TestCase):
@@ -294,6 +310,114 @@ class WorkflowTests(unittest.TestCase):
 
         self.assertIsInstance(result.data["slide_plan"], SlidePlan)
         self.assertEqual(len(result.data["slide_plan"].slides), 3)
+
+    def test_extract_slide_materials_accepts_user_materials(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_path = Path(tmp_dir) / "paper.txt"
+            paper_path.write_text(
+                "\n".join(
+                    [
+                        "Academic Slides Paper",
+                        "Abstract",
+                        "This paper studies slide workflows.",
+                        "Method",
+                        "The method separates material review from layout design.",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            library = extract_slide_materials(
+                str(paper_path),
+                user_materials=[{"title": "My preferred example", "content": "Use the toy example from group meeting."}],
+            )
+
+        self.assertIsInstance(library, SlideMaterialLibrary)
+        self.assertTrue(any(material.kind == "method" for material in library.materials))
+        self.assertTrue(any(material.user_provided for material in library.materials))
+
+    def test_extract_slide_materials_accepts_user_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            paper_path = tmp_path / "paper.txt"
+            paper_path.write_text("Material Paper\nThis paper studies user materials.", encoding="utf-8")
+            notes_path = tmp_path / "notes.md"
+            notes_path.write_text("# Talk framing\nExplain the failure case first.\n\n## Equation\nUse the simplified objective.", encoding="utf-8")
+            docx_path = tmp_path / "script.docx"
+            build_minimal_docx(docx_path, ["Opening story", "Important limitation"])
+            screenshot_path = tmp_path / "method.png"
+            screenshot_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+            library = extract_slide_materials(
+                str(paper_path),
+                material_paths=[notes_path, docx_path, screenshot_path],
+            )
+
+        user_materials = [material for material in library.materials if material.user_provided]
+        self.assertTrue(any(material.kind == "screenshot" for material in user_materials))
+        self.assertTrue(any("markdown" in material.tags for material in user_materials))
+        self.assertTrue(any("word" in material.tags for material in user_materials))
+
+    def test_plan_academic_slides_links_materials_to_layout_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_path = Path(tmp_dir) / "paper.txt"
+            paper_path.write_text(
+                "\n".join(
+                    [
+                        "Academic Plan Paper",
+                        "Abstract",
+                        "This paper studies careful presentations.",
+                        "Method",
+                        "The method uses a reviewable material library.",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = plan_academic_slides(str(paper_path))
+            plan = result["slide_plan"]
+
+        self.assertIsInstance(result["material_library"], SlideMaterialLibrary)
+        self.assertIsInstance(plan, SlidePlan)
+        self.assertTrue(plan.slides[0].material_ids)
+        self.assertTrue(plan.slides[0].presenter_checklist)
+        self.assertLessEqual(len(plan.slides[1].key_message), 220)
+
+    def test_ai_research_profile_emphasizes_motivation_and_method(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_path = Path(tmp_dir) / "paper.txt"
+            paper_path.write_text(
+                "\n".join(
+                    [
+                        "AI Research Style Paper",
+                        "Abstract",
+                        "This paper studies motivation-heavy paper talks.",
+                        "Method",
+                        "The method introduces a training loop with a useful objective.",
+                        "Experiments",
+                        "Experiments validate the method.",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = plan_academic_slides(
+                str(paper_path),
+                user_materials=[
+                    {
+                        "kind": "my_interpretation",
+                        "title": "My limitation take",
+                        "content": "The assumption may break when the reward signal is sparse.",
+                    }
+                ],
+                profile="ai-research",
+            )
+            plan = result["slide_plan"]
+
+        self.assertEqual([slide.title for slide in plan.slides[:3]], ["Why This Paper Matters", "Method Intuition", "What To Remember"])
+        self.assertNotIn("Experiments", [slide.title for slide in plan.slides])
+        self.assertEqual(plan.slides[-1].title, "My Take")
+        self.assertTrue(any("Experiments should stay brief" in note for note in result["material_library"].notes))
 
     def test_design_experiment(self) -> None:
         result = design_experiment("Does retrieval improve agent planning?")

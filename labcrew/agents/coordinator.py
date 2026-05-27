@@ -13,6 +13,7 @@ from labcrew.agents.writing import WritingAgent
 from labcrew.config import load_config
 from labcrew.schemas import LiteratureCard, Task, TaskResult, TaskType
 from labcrew.tools.card_store import CardStore
+from labcrew.tools.zotero_link_store import ZoteroLinkStore, to_notion_status
 
 
 class LabCrewAgent(BaseAgent):
@@ -47,7 +48,8 @@ class LabCrewAgent(BaseAgent):
             if task.payload.get("save_to_notion"):
                 data["notion"] = self._save_card_to_notion(card)
             if task.payload.get("save_to_cards"):
-                data["github"] = self._save_card_to_cards(card)
+                data["cards"] = self._save_card_to_cards(card)
+            self._sync_link_store_after_read(paper)
             return TaskResult(task.task_id, self.name, data)
 
         if task.type == TaskType.MAKE_CARD:
@@ -62,8 +64,9 @@ class LabCrewAgent(BaseAgent):
             if task.payload.get("save_to_notion", False):
                 data["notion"] = self._save_card_to_notion(card)
             if task.payload.get("save_to_cards", False):
-                data["github"] = self._save_card_to_cards(card)
+                data["cards"] = self._save_card_to_cards(card)
 
+            self._sync_link_store_after_read(paper)
             return TaskResult(task.task_id, self.name, data)
 
         if task.type == TaskType.MAKE_PRESENTATION:
@@ -80,6 +83,7 @@ class LabCrewAgent(BaseAgent):
                 strategy_payload["report"] = reading.get("report")
                 strategy_payload["card_report"] = reading.get("card_report")
             proposal = self.proposal.run(Task(TaskType.CRITIQUE_PAPER, strategy_payload, project=task.project)).data
+            self._sync_link_store_after_read(paper)
             return TaskResult(task.task_id, self.name, {"paper": self._paper_brief(paper), "proposal": proposal})
 
         if task.type == TaskType.DEEP_READ_METHOD:
@@ -98,7 +102,8 @@ class LabCrewAgent(BaseAgent):
             if task.payload.get("save_to_notion"):
                 data["notion"] = self._save_card_to_notion(card)
             if task.payload.get("save_to_cards"):
-                data["github"] = self._save_card_to_cards(card)
+                data["cards"] = self._save_card_to_cards(card)
+            self._sync_link_store_after_read(paper)
             return TaskResult(task.task_id, self.name, data)
 
         if task.type == TaskType.DESIGN_EXPERIMENT:
@@ -119,7 +124,35 @@ class LabCrewAgent(BaseAgent):
     def _save_card_to_notion(self, card: object) -> dict[str, object]:
         if not isinstance(card, LiteratureCard):
             raise ValueError("Notion save requires a LiteratureCard.")
-        return self.notion_sync.publish_card(card)
+
+        # Local dedup: check ZoteroLinkStore before hitting Notion API
+        if card.zotero_item_key:
+            config = load_config()
+            with ZoteroLinkStore(db_path=config.link_store_path) as store:
+                row = store.get(card.zotero_item_key)
+            if row and row.get("notion_page_id"):
+                return {
+                    "status": "already_exists",
+                    "page_id": row["notion_page_id"],
+                    "url": row.get("notion_url", ""),
+                    "source": "local_store",
+                }
+
+        status = self._get_reading_status(card.zotero_item_key) if card.zotero_item_key else "To Read"
+        notion_status = to_notion_status(status)
+        result = self.notion_sync.publish_card(card, status=notion_status)
+        # Write notion link to local store for future dedup
+        if card.zotero_item_key and result.get("page_id") and result.get("url"):
+            config = load_config()
+            with ZoteroLinkStore(db_path=config.link_store_path) as store:
+                store.set_notion_link(card.zotero_item_key, str(result["page_id"]), str(result["url"]))
+        return result
+
+    def _get_reading_status(self, zotero_key: str) -> str:
+        config = load_config()
+        with ZoteroLinkStore(db_path=config.link_store_path) as store:
+            row = store.get(zotero_key)
+        return row["reading_status"] if row else "unread"
 
     def _save_card_to_cards(self, card: object) -> dict[str, object]:
         if not isinstance(card, LiteratureCard):
@@ -127,7 +160,29 @@ class LabCrewAgent(BaseAgent):
         config = load_config()
         root_dir = config.cards.settings.get("output_dir", "research/papers")
         adapter = CardStore(root_dir=root_dir)
-        return adapter.create_literature_card(card)
+        result = adapter.create_literature_card(card)
+        # Track card path in link store
+        if card.zotero_item_key and result.get("path"):
+            config = load_config()
+            with ZoteroLinkStore(db_path=config.link_store_path) as store:
+                store.set_card_path(card.zotero_item_key, str(result["path"]))
+        return result
+
+    def _update_link_store(self, zotero_key: str, **fields: object) -> None:
+        config = load_config()
+        with ZoteroLinkStore(db_path=config.link_store_path) as store:
+            store.upsert(zotero_key, **fields)
+
+    def _sync_link_store_after_read(self, paper: object) -> None:
+        """After reading a paper, mark it as 'read' in ZoteroLinkStore."""
+        zotero_key = getattr(paper, "zotero_item_key", None)
+        if not zotero_key:
+            return
+        self._update_link_store(
+            zotero_key,
+            title=getattr(paper, "title", ""),
+            reading_status="read",
+        )
 
     def _read_paper(self, task: Task) -> tuple[object, dict[str, object]]:
         if "paper" in task.payload:
