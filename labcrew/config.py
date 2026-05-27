@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from labcrew.env import load_local_env
 
 
 @dataclass(frozen=True)
@@ -32,3 +35,17 @@ class LabCrewConfig:
 def default_config() -> LabCrewConfig:
     return LabCrewConfig()
 
+
+def load_config() -> LabCrewConfig:
+    load_local_env()
+    notion_enabled = bool(os.environ.get("NOTION_API_KEY"))
+    notion_config = IntegrationConfig(
+        enabled=notion_enabled,
+        provider="notion" if notion_enabled else "mock",
+        settings={
+            "api_key": os.environ.get("NOTION_API_KEY", ""),
+            "database_id": os.environ.get("NOTION_DATABASE_ID", ""),
+        },
+    )
+
+    return LabCrewConfig(notion=notion_config)

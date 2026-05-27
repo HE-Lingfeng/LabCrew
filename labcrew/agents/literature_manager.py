@@ -12,12 +12,16 @@ class LiteratureManagerAgent(BaseAgent):
         self.zotero = zotero or ZoteroAdapter()
 
     def run(self, task: Task) -> TaskResult:
-        collection = task.payload.get("collection")
-        items = self.zotero.list_items(collection=collection)
+        collection_key = task.payload.get("collection")
+        if collection_key:
+            items = self.zotero.get_collection_items(collection_key)
+        else:
+            items = self.zotero.list_items()
+        data = [{"key": i.key, "title": i.title, "year": i.year, "doi": i.doi} for i in items]
         return TaskResult(
             task_id=task.task_id,
             agent_name=self.name,
-            data=items,
-            notes=["ZoteroAdapter is mock/read-only in the scaffold."],
+            data=data,
+            notes=[f"Synced {len(data)} items from Zotero."],
         )
 

@@ -1,9 +1,18 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["labcrew*"]
+
 [project]
 name = "labcrew"
 version = "0.1.0"
 description = "A multi-agent research assistant for graduate research workflows."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "httpx>=0.27",
+]
 
 [project.scripts]
 labcrew = "labcrew.main:main"
@@ -11,4 +20,3 @@ labcrew = "labcrew.main:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-

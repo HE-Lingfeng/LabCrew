@@ -5,6 +5,7 @@ from .generate_idea import generate_idea
 from .make_presentation import make_presentation
 from .propose_research import propose_research
 from .read_paper import read_paper
+from .read_zotero import read_zotero_item
 from .research_strategy import research_strategy
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "make_presentation",
     "propose_research",
     "read_paper",
+    "read_zotero_item",
     "research_strategy",
 ]

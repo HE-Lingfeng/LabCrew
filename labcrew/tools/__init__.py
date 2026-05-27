@@ -8,7 +8,7 @@ from .pdf_parser import PDFParser
 from .ppt_adapter import PPTAdapter
 from .search_adapter import SearchAdapter
 from .text_chunker import TextChunker
-from .zotero_adapter import ZoteroAdapter
+from .zotero_adapter import ZoteroAdapter, ZoteroAttachment, ZoteroItem
 
 __all__ = [
     "CitationFormatter",
@@ -22,4 +22,6 @@ __all__ = [
     "SearchAdapter",
     "TextChunker",
     "ZoteroAdapter",
+    "ZoteroAttachment",
+    "ZoteroItem",
 ]

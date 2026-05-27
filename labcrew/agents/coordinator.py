@@ -4,12 +4,13 @@ from labcrew.agents.base import BaseAgent
 from labcrew.agents.easter_egg import WeekendEasterEggAgent
 from labcrew.agents.knowledge_card import KnowledgeCardAgent
 from labcrew.agents.literature_manager import LiteratureManagerAgent
+from labcrew.agents.notion_sync import NotionSyncAgent
 from labcrew.agents.paper_ingest import PaperIngestAgent
 from labcrew.agents.paper_reader import PaperReaderAgent
 from labcrew.agents.presentation import PresentationAgent
 from labcrew.agents.proposal import ProposalAgent
 from labcrew.agents.writing import WritingAgent
-from labcrew.schemas import Task, TaskResult, TaskType
+from labcrew.schemas import LiteratureCard, Task, TaskResult, TaskType
 
 
 class LabCrewAgent(BaseAgent):
@@ -22,6 +23,7 @@ class LabCrewAgent(BaseAgent):
         self.knowledge_card = KnowledgeCardAgent()
         self.presentation = PresentationAgent()
         self.literature_manager = LiteratureManagerAgent()
+        self.notion_sync = NotionSyncAgent()
         self.writing = WritingAgent()
         self.easter_egg = WeekendEasterEggAgent()
 
@@ -35,6 +37,12 @@ class LabCrewAgent(BaseAgent):
                 data["method_deep_dive"] = self.paper_reader.run(
                     Task(TaskType.DEEP_READ_METHOD, {"paper": paper, "report": reading["report"]}, project=task.project)
                 ).data
+            if task.payload.get("save_to_notion"):
+                card = self.knowledge_card.run(
+                    Task(TaskType.MAKE_CARD, {"paper": paper, "summary": reading["report"]}, project=task.project)
+                ).data
+                data["card"] = card
+                data["notion"] = self._save_card_to_notion(card)
             return TaskResult(task.task_id, self.name, data)
 
         if task.type == TaskType.MAKE_CARD:
@@ -45,6 +53,10 @@ class LabCrewAgent(BaseAgent):
             data = {"paper": self._paper_brief(paper), "card_report": reading["card_report"], "card": card}
             if "journal" in reading:
                 data["journal"] = reading["journal"]
+
+            if task.payload.get("save_to_notion", False):
+                data["notion"] = self._save_card_to_notion(card)
+
             return TaskResult(task.task_id, self.name, data)
 
         if task.type == TaskType.MAKE_PRESENTATION:
@@ -71,6 +83,12 @@ class LabCrewAgent(BaseAgent):
             data = {"paper": self._paper_brief(paper), "card_report": reading["card_report"], "method_deep_dive": deep_dive}
             if "journal" in reading:
                 data["journal"] = reading["journal"]
+            if task.payload.get("save_to_notion"):
+                card = self.knowledge_card.run(
+                    Task(TaskType.MAKE_CARD, {"paper": paper, "summary": reading["report"]}, project=task.project)
+                ).data
+                data["card"] = card
+                data["notion"] = self._save_card_to_notion(card)
             return TaskResult(task.task_id, self.name, data)
 
         if task.type == TaskType.DESIGN_EXPERIMENT:
@@ -88,8 +106,16 @@ class LabCrewAgent(BaseAgent):
 
         raise ValueError(f"Unsupported task type: {task.type}")
 
+    def _save_card_to_notion(self, card: object) -> dict[str, object]:
+        if not isinstance(card, LiteratureCard):
+            raise ValueError("Notion save requires a LiteratureCard.")
+        return self.notion_sync.publish_card(card)
+
     def _read_paper(self, task: Task) -> tuple[object, dict[str, object]]:
-        paper = self.paper_ingest.run(task).data
+        if "paper" in task.payload:
+            paper = task.payload["paper"]
+        else:
+            paper = self.paper_ingest.run(task).data
         reader_payload = {
             "paper": paper,
             "save_journal": task.payload.get("save_journal", True),

@@ -3,6 +3,7 @@ from .coordinator import LabCrewAgent
 from .easter_egg import WeekendEasterEggAgent
 from .knowledge_card import KnowledgeCardAgent
 from .literature_manager import LiteratureManagerAgent
+from .notion_sync import NotionSyncAgent
 from .paper_ingest import PaperIngestAgent
 from .paper_reader import PaperReaderAgent
 from .presentation import PresentationAgent
@@ -14,6 +15,7 @@ __all__ = [
     "KnowledgeCardAgent",
     "LabCrewAgent",
     "LiteratureManagerAgent",
+    "NotionSyncAgent",
     "PaperIngestAgent",
     "PaperReaderAgent",
     "PresentationAgent",
