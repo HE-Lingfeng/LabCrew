@@ -10,12 +10,13 @@ def deep_read_method(
     save_journal: bool = True,
     journal_period: str = "weekly",
     save_to_notion: bool = False,
+    save_to_cards: bool = False,
 ) -> TaskResult:
     agent = LabCrewAgent()
     return agent.run(
         Task(
             TaskType.DEEP_READ_METHOD,
-            {"source": source, "save_journal": save_journal, "journal_period": journal_period, "save_to_notion": save_to_notion},
+            {"source": source, "save_journal": save_journal, "journal_period": journal_period, "save_to_notion": save_to_notion, "save_to_cards": save_to_cards},
             project=project,
         )
     )

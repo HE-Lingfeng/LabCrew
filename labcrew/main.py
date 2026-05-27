@@ -47,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     read_parser.add_argument("--no-journal", action="store_true", help="Do not save the card report into a journal file.")
     read_parser.add_argument("--notion", action="store_true", help="Save the literature card to Notion.")
+    read_parser.add_argument("--cards", action="store_true", help="Save the literature card as a local Markdown file (CardStore).")
 
     deep_method_parser = subparsers.add_parser(
         "deep-read-method",
@@ -64,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not save the card report into a journal file.",
     )
     deep_method_parser.add_argument("--notion", action="store_true", help="Save the literature card to Notion.")
+    deep_method_parser.add_argument("--cards", action="store_true", help="Save the literature card as a local Markdown file (CardStore).")
 
     card_parser = subparsers.add_parser("make-card", help="Create a local literature card payload.")
     card_parser.add_argument("source")
@@ -74,6 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     card_parser.add_argument("--no-journal", action="store_true", help="Do not save the card report into a journal file.")
     card_parser.add_argument("--notion", action="store_true", help="Save the literature card to Notion.")
+    card_parser.add_argument("--cards", action="store_true", help="Save the literature card as a local Markdown file (CardStore).")
 
     slides_parser = subparsers.add_parser("make-slides", help="Create a slide plan from a paper source.")
     slides_parser.add_argument("source")
@@ -116,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     zotero_read.add_argument("--journal-period", default="weekly", help="Journal period.")
     zotero_read.add_argument("--no-journal", action="store_true", help="Do not save journal entry.")
     zotero_read.add_argument("--notion", action="store_true", help="Save the literature card to Notion.")
+    zotero_read.add_argument("--cards", action="store_true", help="Save the literature card as a local Markdown file (CardStore).")
 
     return parser
 
@@ -145,6 +149,7 @@ def _handle_zotero(args: argparse.Namespace) -> Any:
             save_journal=not args.no_journal,
             journal_period=args.journal_period,
             save_to_notion=args.notion,
+            save_to_cards=args.cards,
         )
     raise ValueError(f"Unknown zotero command: {args.zotero_command}")
 
@@ -161,6 +166,7 @@ def main(argv: list[str] | None = None) -> None:
                 save_journal=not args.no_journal,
                 journal_period=args.journal_period,
                 save_to_notion=args.notion,
+                save_to_cards=args.cards,
             )
         )
     elif args.command == "deep-read-method":
@@ -170,6 +176,7 @@ def main(argv: list[str] | None = None) -> None:
                 save_journal=not args.no_journal,
                 journal_period=args.journal_period,
                 save_to_notion=args.notion,
+                save_to_cards=args.cards,
             )
         )
     elif args.command == "make-card":
@@ -179,6 +186,7 @@ def main(argv: list[str] | None = None) -> None:
                 save_journal=not args.no_journal,
                 journal_period=args.journal_period,
                 save_to_notion=args.notion,
+                save_to_cards=args.cards,
             )
         )
     elif args.command == "make-slides":

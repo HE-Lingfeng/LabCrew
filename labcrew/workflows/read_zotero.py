@@ -14,6 +14,7 @@ def read_zotero_item(
     save_journal: bool = True,
     journal_period: str = "weekly",
     save_to_notion: bool = False,
+    save_to_cards: bool = False,
 ) -> TaskResult:
     with ZoteroAdapter() as adapter:
         zotero_item = adapter.get_item(item_key)
@@ -38,6 +39,7 @@ def read_zotero_item(
                 "save_journal": save_journal,
                 "journal_period": journal_period,
                 "save_to_notion": save_to_notion,
+                "save_to_cards": save_to_cards,
             },
             project=project,
         )

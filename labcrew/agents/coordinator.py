@@ -10,7 +10,9 @@ from labcrew.agents.paper_reader import PaperReaderAgent
 from labcrew.agents.presentation import PresentationAgent
 from labcrew.agents.proposal import ProposalAgent
 from labcrew.agents.writing import WritingAgent
+from labcrew.config import load_config
 from labcrew.schemas import LiteratureCard, Task, TaskResult, TaskType
+from labcrew.tools.card_store import CardStore
 
 
 class LabCrewAgent(BaseAgent):
@@ -37,12 +39,15 @@ class LabCrewAgent(BaseAgent):
                 data["method_deep_dive"] = self.paper_reader.run(
                     Task(TaskType.DEEP_READ_METHOD, {"paper": paper, "report": reading["report"]}, project=task.project)
                 ).data
-            if task.payload.get("save_to_notion"):
+            if task.payload.get("save_to_notion") or task.payload.get("save_to_cards"):
                 card = self.knowledge_card.run(
                     Task(TaskType.MAKE_CARD, {"paper": paper, "summary": reading["report"]}, project=task.project)
                 ).data
                 data["card"] = card
+            if task.payload.get("save_to_notion"):
                 data["notion"] = self._save_card_to_notion(card)
+            if task.payload.get("save_to_cards"):
+                data["github"] = self._save_card_to_cards(card)
             return TaskResult(task.task_id, self.name, data)
 
         if task.type == TaskType.MAKE_CARD:
@@ -56,6 +61,8 @@ class LabCrewAgent(BaseAgent):
 
             if task.payload.get("save_to_notion", False):
                 data["notion"] = self._save_card_to_notion(card)
+            if task.payload.get("save_to_cards", False):
+                data["github"] = self._save_card_to_cards(card)
 
             return TaskResult(task.task_id, self.name, data)
 
@@ -83,12 +90,15 @@ class LabCrewAgent(BaseAgent):
             data = {"paper": self._paper_brief(paper), "card_report": reading["card_report"], "method_deep_dive": deep_dive}
             if "journal" in reading:
                 data["journal"] = reading["journal"]
-            if task.payload.get("save_to_notion"):
+            if task.payload.get("save_to_notion") or task.payload.get("save_to_cards"):
                 card = self.knowledge_card.run(
                     Task(TaskType.MAKE_CARD, {"paper": paper, "summary": reading["report"]}, project=task.project)
                 ).data
                 data["card"] = card
+            if task.payload.get("save_to_notion"):
                 data["notion"] = self._save_card_to_notion(card)
+            if task.payload.get("save_to_cards"):
+                data["github"] = self._save_card_to_cards(card)
             return TaskResult(task.task_id, self.name, data)
 
         if task.type == TaskType.DESIGN_EXPERIMENT:
@@ -110,6 +120,14 @@ class LabCrewAgent(BaseAgent):
         if not isinstance(card, LiteratureCard):
             raise ValueError("Notion save requires a LiteratureCard.")
         return self.notion_sync.publish_card(card)
+
+    def _save_card_to_cards(self, card: object) -> dict[str, object]:
+        if not isinstance(card, LiteratureCard):
+            raise ValueError("GitHub save requires a LiteratureCard.")
+        config = load_config()
+        root_dir = config.cards.settings.get("output_dir", "research/papers")
+        adapter = CardStore(root_dir=root_dir)
+        return adapter.create_literature_card(card)
 
     def _read_paper(self, task: Task) -> tuple[object, dict[str, object]]:
         if "paper" in task.payload:

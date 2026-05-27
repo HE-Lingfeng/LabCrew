@@ -1,6 +1,6 @@
 from .citation import CitationFormatter
 from .document_adapter import DocumentAdapter
-from .github_adapter import GitHubAdapter
+from .card_store import CardStore
 from .journal_store import JournalStore
 from .llm_adapter import LLMAdapter
 from .notion_adapter import NotionAdapter
@@ -13,7 +13,7 @@ from .zotero_adapter import ZoteroAdapter, ZoteroAttachment, ZoteroItem
 __all__ = [
     "CitationFormatter",
     "DocumentAdapter",
-    "GitHubAdapter",
+    "CardStore",
     "JournalStore",
     "LLMAdapter",
     "NotionAdapter",

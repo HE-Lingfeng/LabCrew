@@ -20,7 +20,7 @@ class LabCrewConfig:
     default_project: str = "general"
     zotero: IntegrationConfig = field(default_factory=IntegrationConfig)
     notion: IntegrationConfig = field(default_factory=IntegrationConfig)
-    github: IntegrationConfig = field(default_factory=IntegrationConfig)
+    cards: IntegrationConfig = field(default_factory=IntegrationConfig)
     presentation: IntegrationConfig = field(default_factory=IntegrationConfig)
 
     @property
@@ -48,4 +48,12 @@ def load_config() -> LabCrewConfig:
         },
     )
 
-    return LabCrewConfig(notion=notion_config)
+    cards_config = IntegrationConfig(
+        enabled=True,
+        provider="local",
+        settings={
+            "output_dir": os.environ.get("CARDS_OUTPUT_DIR", "research/papers"),
+        },
+    )
+
+    return LabCrewConfig(notion=notion_config, cards=cards_config)
