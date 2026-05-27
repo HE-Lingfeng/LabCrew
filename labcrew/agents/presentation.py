@@ -18,6 +18,9 @@ class PresentationAgent(BaseAgent):
         if profile == "ai-research":
             plan = self._ai_research_plan(task, card, material_library, material_ids)
             return TaskResult(task_id=task.task_id, agent_name=self.name, data=plan)
+        if profile == "ai-survey":
+            plan = self._ai_survey_plan(task, card, material_library, material_ids)
+            return TaskResult(task_id=task.task_id, agent_name=self.name, data=plan)
 
         plan = SlidePlan(
             title=f"Paper Brief: {card.title}",
@@ -135,6 +138,74 @@ class PresentationAgent(BaseAgent):
             slides=slides,
         )
 
+    def _ai_survey_plan(self, task: Task, card: LiteratureCard, library: object, material_ids) -> SlidePlan:
+        trend = self._first_user_material(library, ("timeline", "trend", "progress", "industry"))
+        taxonomy = self._first_user_material(library, ("taxonomy", "method_family", "category"))
+        representative = self._representative_papers(library)
+        slides = [
+            Slide(
+                title="Field Timeline",
+                purpose="Show how the area evolved and why this moment matters.",
+                key_message=self._compact(trend or card.problem or card.one_sentence_summary),
+                bullets=self._compact_list([
+                    trend,
+                    "Group papers by time, method family, or capability jump instead of explaining every paper.",
+                ]),
+                layout="timeline",
+                material_ids=material_ids("timeline", "trend", "progress", "industry", "note"),
+                presenter_checklist=[
+                    "Make the timeline explain a shift in the field, not just a list of dates.",
+                    "Keep each paper to one role in the story.",
+                ],
+            ),
+            Slide(
+                title="Method Landscape",
+                purpose="Organize methods into families and tradeoffs.",
+                key_message=self._compact(taxonomy or card.method),
+                bullets=self._compact_list([
+                    taxonomy,
+                    card.method,
+                ], limit=4),
+                layout="comparison",
+                material_ids=material_ids("taxonomy", "method_family", "method", "screenshot"),
+                presenter_checklist=[
+                    "Compare method families, not individual implementation trivia.",
+                    "Name the axis: data, architecture, objective, inference, or system constraint.",
+                ],
+            ),
+            Slide(
+                title="Representative Papers",
+                purpose="Give each paper a compact role in the survey.",
+                key_message="Each paper gets one contribution and one reason it matters.",
+                bullets=self._compact_list(representative or ["Add representative papers through user notes or survey materials."], limit=6),
+                layout="comparison",
+                material_ids=material_ids("paper", "claim", "takeaway", "main_result"),
+                presenter_checklist=[
+                    "Do not deep-dive every method; pick one or two representative mechanisms if needed.",
+                    "Avoid giving more than one slide to a paper unless it anchors the whole survey.",
+                ],
+            ),
+            Slide(
+                title="Takeaways And Open Directions",
+                purpose="Close with progress, bottlenecks, and what to watch next.",
+                key_message="Summarize the direction of travel and the remaining bottlenecks.",
+                bullets=self._compact_list(card.open_questions or card.useful_for or ["What changed in the field, and what remains unresolved?"], limit=5),
+                layout="section",
+                material_ids=material_ids("question_for_group", "limitation", "failure_case", "my_interpretation"),
+                presenter_checklist=[
+                    "Focus on field-level open problems rather than one paper's limitations.",
+                    "Add your own view only where it changes the audience's understanding of the trend.",
+                ],
+            ),
+        ]
+        return SlidePlan(
+            title=f"Survey Brief: {card.title}",
+            audience=str(task.payload.get("audience", "research group")),
+            duration_minutes=int(task.payload.get("duration_minutes", 10)),
+            source_papers=[card.title],
+            slides=slides,
+        )
+
     @staticmethod
     def _compact(text: str, limit: int = 220) -> str:
         compact = " ".join(str(text).split())
@@ -152,6 +223,16 @@ class PresentationAgent(BaseAgent):
             if material.user_provided and (material.kind in kinds or set(material.tags).intersection(kinds)):
                 return self._compact(material.content, limit=220)
         return ""
+
+    def _representative_papers(self, library: object) -> list[str]:
+        if not isinstance(library, SlideMaterialLibrary):
+            return []
+        papers = [
+            f"{material.title}: {material.content}"
+            for material in library.materials
+            if material.user_provided and (material.kind in {"paper", "claim", "main_result"} or {"paper", "survey"}.intersection(material.tags))
+        ]
+        return papers[:6]
 
     @staticmethod
     def _material_ids(library: object):

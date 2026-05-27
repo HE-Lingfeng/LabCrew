@@ -419,6 +419,62 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(plan.slides[-1].title, "My Take")
         self.assertTrue(any("Experiments should stay brief" in note for note in result["material_library"].notes))
 
+    def test_ai_survey_profile_focuses_on_timeline_and_landscape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_path = Path(tmp_dir) / "survey.txt"
+            paper_path.write_text(
+                "\n".join(
+                    [
+                        "Survey Style Paper",
+                        "Abstract",
+                        "This paper reviews progress in agent methods.",
+                        "Method",
+                        "The area includes prompting, retrieval, tool use, and verification.",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = plan_academic_slides(
+                str(paper_path),
+                user_materials=[
+                    {
+                        "kind": "timeline",
+                        "title": "Progression",
+                        "content": "2022 prompting, 2023 retrieval agents, 2024 tool-use agents.",
+                    },
+                    {
+                        "kind": "paper",
+                        "title": "Representative Agent Paper",
+                        "content": "Shows tool use as the central capability shift.",
+                        "tags": ["survey"],
+                    },
+                ],
+                profile="ai-survey",
+            )
+            plan = result["slide_plan"]
+
+        self.assertEqual([slide.title for slide in plan.slides], [
+            "Field Timeline",
+            "Method Landscape",
+            "Representative Papers",
+            "Takeaways And Open Directions",
+        ])
+        self.assertEqual(plan.slides[0].layout, "timeline")
+        self.assertIn("Representative Agent Paper", plan.slides[2].bullets[0])
+        self.assertTrue(any("AI survey profile" in note for note in result["material_library"].notes))
+
+    def test_ai_survey_profile_asks_for_representative_papers_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_path = Path(tmp_dir) / "survey.txt"
+            paper_path.write_text("Survey Style Paper\nThis paper reviews methods.", encoding="utf-8")
+
+            result = plan_academic_slides(str(paper_path), profile="ai-survey")
+            plan = result["slide_plan"]
+
+        self.assertEqual(plan.slides[2].title, "Representative Papers")
+        self.assertEqual(plan.slides[2].bullets, ["Add representative papers through user notes or survey materials."])
+
     def test_design_experiment(self) -> None:
         result = design_experiment("Does retrieval improve agent planning?")
 

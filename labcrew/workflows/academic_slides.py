@@ -186,13 +186,19 @@ def _materials_from_report(report: PaperReadingReport) -> list[SlideMaterial]:
 
 
 def _profile_notes(profile: str) -> list[str]:
-    if profile != "ai-research":
-        return []
-    return [
-        "AI research profile: emphasize motivation and method intuition.",
-        "Experiments should stay brief unless there is a special trick, surprising result, or important evaluation caveat.",
-        "Limitations are optional; expand them only when user-provided interpretation exists.",
-    ]
+    if profile == "ai-research":
+        return [
+            "AI research deep-dive profile: emphasize motivation and method intuition.",
+            "Experiments should stay brief unless there is a special trick, surprising result, or important evaluation caveat.",
+            "Limitations are optional; expand them only when user-provided interpretation exists.",
+        ]
+    if profile == "ai-survey":
+        return [
+            "AI survey profile: emphasize method landscape, field timeline, and representative papers.",
+            "Each paper should receive a compact role in the story instead of a full deep dive.",
+            "Experiments are summarized only when they explain field progress or a key evaluation shift.",
+        ]
+    return []
 
 
 def _materials_from_figures(paper: Paper) -> list[SlideMaterial]:

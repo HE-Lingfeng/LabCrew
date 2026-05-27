@@ -107,7 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
     academic_slides.add_argument(
         "--profile",
         default="ai-research",
-        choices=["ai-research", "standard"],
+        choices=["ai-research", "ai-survey", "standard"],
         help="Slide planning profile.",
     )
     academic_slides.add_argument(
