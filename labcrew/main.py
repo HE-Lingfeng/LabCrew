@@ -3,8 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import asdict, is_dataclass
+from pathlib import Path
+import re
 from typing import Any
 
+from labcrew.config import load_config
 from labcrew.tools import ZoteroAdapter
 from labcrew.workflows import (
     create_literature_card,
@@ -115,6 +118,11 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         default=[],
         help="User-provided screenshots, Markdown files, Word .docx files, or folders to include as slide materials.",
+    )
+    academic_slides.add_argument(
+        "--out",
+        default=None,
+        help="Output path for materials JSON (used with --stage materials). Default: data/artifacts/materials/<slug>/materials.json",
     )
 
     experiment_parser = subparsers.add_parser(
@@ -255,7 +263,20 @@ def main(argv: list[str] | None = None) -> None:
             _print_result(make_presentation(args.source))
     elif args.command == "academic-slides":
         if args.stage == "materials":
-            _print_result(extract_slide_materials(args.source, material_paths=args.materials, profile=args.profile))
+            config = load_config()
+            slug = re.sub(r"[^a-zA-Z0-9]+", "-", Path(args.source).stem.strip().lower()).strip("-") or "materials"
+            default_out = config.artifacts_dir / "materials" / slug / "materials.json"
+            out_path = Path(args.out) if args.out else default_out
+            library = extract_slide_materials(
+                args.source,
+                material_paths=args.materials,
+                profile=args.profile,
+                output_path=out_path,
+            )
+            _print_result(library)
+            print(f"\nMaterials saved to {out_path}")
+            print(f"Review and edit this file, then run:")
+            print(f"  labcrew academic-slides {args.source} --stage plan --materials {out_path}")
         elif args.stage == "plan":
             _print_result(
                 plan_academic_slides(

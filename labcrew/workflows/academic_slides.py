@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import asdict
+import json
 from pathlib import Path
 import re
 import zipfile
@@ -26,8 +28,12 @@ def extract_slide_materials(
     user_materials: Iterable[SlideMaterial | dict[str, object]] | None = None,
     material_paths: Iterable[str | Path] | None = None,
     profile: str = "ai-research",
+    output_path: str | Path | None = None,
 ) -> SlideMaterialLibrary:
-    """Extract a reviewable material library before drafting academic slides."""
+    """Extract a reviewable material library before drafting academic slides.
+
+    If *output_path* is provided the library is saved as JSON at that path.
+    """
     paper = PaperIngestAgent().run(Task(TaskType.READ_PAPER, {"source": source}, project=project)).data
     if not isinstance(paper, Paper):
         raise ValueError("Paper ingestion did not return a Paper.")
@@ -44,7 +50,7 @@ def extract_slide_materials(
     materials.extend(_normalize_user_materials(user_materials or []))
     materials.extend(_materials_from_paths(material_paths or []))
 
-    return SlideMaterialLibrary(
+    library = SlideMaterialLibrary(
         title=paper.title or report.title,
         source=source,
         materials=materials,
@@ -60,6 +66,11 @@ def extract_slide_materials(
         ],
     )
 
+    if output_path:
+        save_material_library_json(library, Path(output_path))
+
+    return library
+
 
 def plan_academic_slides(
     source: str,
@@ -70,7 +81,55 @@ def plan_academic_slides(
     duration_minutes: int = 10,
     profile: str = "ai-research",
 ) -> dict[str, object]:
-    """Create the material library and a first slide plan for user review."""
+    """Create the material library and a first slide plan for user review.
+
+    If *material_paths* includes a ``.json`` file created by an earlier
+    ``--stage materials`` run, that library is loaded directly and the paper
+    extraction step is skipped.
+    """
+    paths = list(material_paths or [])
+    json_path, other_paths = _split_material_paths(paths)
+
+    if json_path is not None:
+        library = load_material_library_json(Path(json_path))
+        if other_paths:
+            extra = _materials_from_paths(other_paths)
+            for m in extra:
+                m.user_provided = True
+            library.materials.extend(extra)
+    else:
+        paper = PaperIngestAgent().run(Task(TaskType.READ_PAPER, {"source": source}, project=project)).data
+        if not isinstance(paper, Paper):
+            raise ValueError("Paper ingestion did not return a Paper.")
+
+        reader = PaperReaderAgent()
+        reading = reader.run(Task(TaskType.READ_PAPER, {"paper": paper, "save_journal": False}, project=project)).data
+        report = reading.get("report")
+        if not isinstance(report, PaperReadingReport):
+            raise ValueError("Paper reading did not return a PaperReadingReport.")
+
+        library = SlideMaterialLibrary(
+            title=paper.title or report.title,
+            source=source,
+            materials=[
+                *_materials_from_report(report),
+                *_materials_from_figures(paper),
+                *_normalize_user_materials(user_materials or []),
+                *_materials_from_paths(other_paths),
+            ],
+            open_questions=[
+                question
+                for chunk in report.chunk_summaries
+                for question in chunk.questions
+            ],
+            notes=[
+                "Treat this plan as a discussion draft.",
+                "Replace weak generated materials with user-reviewed explanation, equations, figures, or examples.",
+                *_profile_notes(profile),
+            ],
+        )
+
+    # Card generation always runs (needs paper metadata).
     paper = PaperIngestAgent().run(Task(TaskType.READ_PAPER, {"source": source}, project=project)).data
     if not isinstance(paper, Paper):
         raise ValueError("Paper ingestion did not return a Paper.")
@@ -80,27 +139,6 @@ def plan_academic_slides(
     report = reading.get("report")
     if not isinstance(report, PaperReadingReport):
         raise ValueError("Paper reading did not return a PaperReadingReport.")
-
-    library = SlideMaterialLibrary(
-        title=paper.title or report.title,
-        source=source,
-        materials=[
-            *_materials_from_report(report),
-            *_materials_from_figures(paper),
-            *_normalize_user_materials(user_materials or []),
-            *_materials_from_paths(material_paths or []),
-        ],
-        open_questions=[
-            question
-            for chunk in report.chunk_summaries
-            for question in chunk.questions
-        ],
-        notes=[
-            "Treat this plan as a discussion draft.",
-            "Replace weak generated materials with user-reviewed explanation, equations, figures, or examples.",
-            *_profile_notes(profile),
-        ],
-    )
 
     card = KnowledgeCardAgent().run(
         Task(TaskType.MAKE_CARD, {"paper": paper, "summary": report}, project=project)
@@ -242,6 +280,8 @@ def _materials_from_paths(paths: Iterable[str | Path]) -> list[SlideMaterial]:
     materials: list[SlideMaterial] = []
     for raw_path in paths:
         path = Path(raw_path).expanduser()
+        if path.suffix.lower() == ".json":
+            continue  # handled at the library level by plan_academic_slides / make_academic_html_slides
         if path.is_dir():
             for child in sorted(path.rglob("*")):
                 if child.is_file():
@@ -348,3 +388,38 @@ def _read_docx_text(path: Path) -> str:
 def _slug(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return slug or "material"
+
+
+def save_material_library_json(library: SlideMaterialLibrary, path: Path) -> Path:
+    """Save *library* as a human-editable JSON file at *path*."""
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(asdict(library), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def load_material_library_json(path: Path) -> SlideMaterialLibrary:
+    """Load a :class:`SlideMaterialLibrary` from a JSON file created by
+    :func:`save_material_library_json`."""
+    data = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Materials JSON must be a dict, got {type(data).__name__}")
+    return SlideMaterialLibrary.from_dict(data)
+
+
+def _split_material_paths(
+    paths: list[str | Path],
+) -> tuple[str | None, list[str | Path]]:
+    """Return ``(first_json_path, remaining_paths)`` from a list of paths."""
+    json_path: str | None = None
+    others: list[str | Path] = []
+    for raw in paths:
+        p = Path(raw)
+        if json_path is None and p.suffix.lower() == ".json":
+            json_path = str(raw)
+        else:
+            others.append(raw)
+    return json_path, others

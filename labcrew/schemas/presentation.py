@@ -23,6 +23,17 @@ class SlideMaterialLibrary:
     open_questions: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "SlideMaterialLibrary":
+        materials = [SlideMaterial(**m) for m in d.get("materials", [])]
+        return cls(
+            title=d.get("title", ""),
+            source=d.get("source", ""),
+            materials=materials,
+            open_questions=d.get("open_questions", []),
+            notes=d.get("notes", []),
+        )
+
 
 @dataclass
 class Slide:
