@@ -55,7 +55,7 @@ class NotionAdapter:
 
     def find_by_title(self, title: str) -> NotionPageRef | None:
         results = self._query_database(
-            {"filter": {"property": self._title_property_name(), "title": {"equals": title}}}
+            {"property": self._title_property_name(), "title": {"equals": title}}
         )
         if results:
             return self._page_ref_from_result(results[0])
@@ -64,7 +64,7 @@ class NotionAdapter:
     def find_by_zotero_key(self, key: str) -> NotionPageRef | None:
         if not self._property_matches("Zotero Key", "rich_text"):
             return None
-        results = self._query_database({"filter": {"property": "Zotero Key", "rich_text": {"equals": key}}})
+        results = self._query_database({"property": "Zotero Key", "rich_text": {"equals": key}})
         if results:
             return self._page_ref_from_result(results[0])
         return None
@@ -82,18 +82,18 @@ class NotionAdapter:
 
     def _post(self, path: str, json: dict[str, Any]) -> httpx.Response:
         r = httpx.post(f"{NOTION_API_BASE}{path}", headers=self._headers(), json=json, timeout=30)
-        r.raise_for_status()
+        self._raise_for_status(r)
         return r
 
     def _patch(self, path: str, json: dict[str, Any]) -> httpx.Response:
         r = httpx.patch(f"{NOTION_API_BASE}{path}", headers=self._headers(), json=json, timeout=30)
-        r.raise_for_status()
+        self._raise_for_status(r)
         return r
 
-    def _query_database(self, filter_body: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def _query_database(self, filter_value: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         body: dict[str, Any] = {}
-        if filter_body:
-            body["filter"] = filter_body
+        if filter_value:
+            body["filter"] = filter_value
         resp = self._post(f"/databases/{self._database_id}/query", json=body)
         return resp.json().get("results", [])
 
@@ -123,8 +123,17 @@ class NotionAdapter:
             headers=self._headers(),
             timeout=30,
         )
-        resp.raise_for_status()
+        self._raise_for_status(resp)
         return {name: prop["type"] for name, prop in resp.json().get("properties", {}).items()}
+
+    def _raise_for_status(self, response: httpx.Response) -> None:
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = response.text.strip()
+            if detail:
+                raise RuntimeError(f"Notion API error {response.status_code}: {detail}") from exc
+            raise
 
     def _card_to_properties(self, card: LiteratureCard, status: str) -> dict[str, Any]:
         rich_text_props = {

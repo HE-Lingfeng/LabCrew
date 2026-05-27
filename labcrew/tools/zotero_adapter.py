@@ -87,7 +87,7 @@ class ZoteroAdapter:
     def connect(self) -> None:
         if not self.db_path.exists():
             raise FileNotFoundError(f"Zotero database not found: {self.db_path}")
-        self._conn = sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True)
+        self._conn = sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro&immutable=1", uri=True)
         self._conn.row_factory = sqlite3.Row
 
     def close(self) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import Mock
 
 from labcrew.schemas import LiteratureCard
 from labcrew.tools.notion_adapter import NotionAdapter
@@ -27,6 +28,22 @@ class NotionAdapterTests(unittest.TestCase):
 
         self.assertEqual(set(properties), {"Paper"})
         self.assertEqual(properties["Paper"]["title"][0]["text"]["content"], "A Paper")
+
+    def test_find_by_zotero_key_sends_valid_notion_filter_payload(self) -> None:
+        adapter = NotionAdapter.__new__(NotionAdapter)
+        adapter._db_properties = {"Name": "title", "Zotero Key": "rich_text"}
+        adapter._database_id = "db"
+        response = Mock()
+        response.json.return_value = {"results": []}
+        adapter._post = Mock(return_value=response)
+
+        result = adapter.find_by_zotero_key("Z123")
+
+        self.assertIsNone(result)
+        adapter._post.assert_called_once_with(
+            "/databases/db/query",
+            json={"filter": {"property": "Zotero Key", "rich_text": {"equals": "Z123"}}},
+        )
 
     def test_card_to_children_preserves_card_body_when_database_has_only_title(self) -> None:
         adapter = NotionAdapter.__new__(NotionAdapter)
