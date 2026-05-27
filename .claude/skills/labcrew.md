@@ -1,6 +1,6 @@
 ---
 name: labcrew
-description: Use LabCrew for graduate research workflows: read papers, create literature cards, Zotero management, research proposals, and slide generation.
+description: "Use LabCrew for graduate research workflows: read papers, create literature cards, Zotero management, research proposals, and slide generation."
 ---
 
 # LabCrew
