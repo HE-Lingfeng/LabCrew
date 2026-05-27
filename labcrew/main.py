@@ -2,44 +2,22 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
 import re
+import sys
 from typing import Any
 
 from labcrew.config import load_config
-from labcrew.tools import ZoteroAdapter
+from labcrew.runtime import call_action, to_jsonable
 from labcrew.workflows import (
-    create_literature_card,
-    deep_read_method,
-    design_experiment,
     extract_slide_materials,
-    generate_idea,
     make_academic_html_slides,
-    make_html_slides,
-    make_presentation,
     plan_academic_slides,
-    plan_collection_reading,
-    propose_research,
-    read_paper,
-    read_zotero_item,
-    research_strategy,
-    update_reading_status,
 )
 
 
-def _to_jsonable(value: Any) -> Any:
-    if is_dataclass(value):
-        return asdict(value)
-    if isinstance(value, dict):
-        return {key: _to_jsonable(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_to_jsonable(item) for item in value]
-    return value
-
-
 def _print_result(result: Any) -> None:
-    print(json.dumps(_to_jsonable(result), ensure_ascii=False, indent=2))
+    print(json.dumps(to_jsonable(result), ensure_ascii=False, indent=2))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -124,6 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Output path for materials JSON (used with --stage materials). Default: data/artifacts/materials/<slug>/materials.json",
     )
+    academic_slides.add_argument(
+        "--theme",
+        default="light",
+        choices=["light", "dark", "blue"],
+        help="Color theme for HTML output (used with --stage html).",
+    )
 
     experiment_parser = subparsers.add_parser(
         "design-experiment",
@@ -182,25 +166,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _handle_zotero(args: argparse.Namespace) -> Any:
     if args.zotero_command == "list":
-        with ZoteroAdapter() as adapter:
-            if args.collection:
-                items = adapter.get_collection_items(args.collection, limit=args.limit)
-            else:
-                items = adapter.list_items(item_type=args.type, limit=args.limit)
-        return [
-            {
-                "key": item.key,
-                "title": item.title,
-                "year": item.year,
-                "doi": item.doi,
-                "venue": item.venue,
-                "pdf": bool(item.attachments),
-            }
-            for item in items
-        ]
+        return call_action("zotero_list", collection=args.collection, type=args.type, limit=args.limit)
     if args.zotero_command == "read":
-        return read_zotero_item(
-            args.item_key,
+        return call_action(
+            "read_zotero_item",
+            item_key=args.item_key,
             deep_method=args.deep_method,
             save_journal=not args.no_journal,
             journal_period=args.journal_period,
@@ -208,13 +178,11 @@ def _handle_zotero(args: argparse.Namespace) -> Any:
             save_to_cards=args.cards,
         )
     if args.zotero_command == "plan":
-        return plan_collection_reading(
-            collection_key=args.collection,
-            batch_size=args.batch_size,
-        )
+        return call_action("plan_zotero_collection", collection=args.collection, batch_size=args.batch_size)
     if args.zotero_command == "status":
-        return update_reading_status(
-            zotero_key=args.key,
+        return call_action(
+            "update_reading_status",
+            key=args.key,
             status=args.status,
             sync_to_notion=args.notion,
         )
@@ -223,12 +191,21 @@ def _handle_zotero(args: argparse.Namespace) -> Any:
 
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
+
+    # No args → TUI
+    cli_args = argv if argv is not None else sys.argv[1:]
+    if not cli_args:
+        from labcrew.tui import start_tui
+        start_tui()
+        return
+
     args = parser.parse_args(argv)
 
     if args.command == "read-paper":
         _print_result(
-            read_paper(
-                args.source,
+            call_action(
+                "read_paper",
+                source=args.source,
                 deep_method=args.deep_method,
                 save_journal=not args.no_journal,
                 journal_period=args.journal_period,
@@ -238,8 +215,9 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.command == "deep-read-method":
         _print_result(
-            deep_read_method(
-                args.source,
+            call_action(
+                "deep_read_method",
+                source=args.source,
                 save_journal=not args.no_journal,
                 journal_period=args.journal_period,
                 save_to_notion=args.notion,
@@ -248,8 +226,9 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.command == "make-card":
         _print_result(
-            create_literature_card(
-                args.source,
+            call_action(
+                "make_card",
+                source=args.source,
                 save_journal=not args.no_journal,
                 journal_period=args.journal_period,
                 save_to_notion=args.notion,
@@ -257,10 +236,7 @@ def main(argv: list[str] | None = None) -> None:
             )
         )
     elif args.command == "make-slides":
-        if args.format == "html":
-            _print_result(make_html_slides(args.source))
-        else:
-            _print_result(make_presentation(args.source))
+        _print_result(call_action("make_slides", source=args.source, format=args.format))
     elif args.command == "academic-slides":
         if args.stage == "materials":
             config = load_config()
@@ -295,16 +271,17 @@ def main(argv: list[str] | None = None) -> None:
                     audience=args.audience,
                     duration_minutes=args.duration_minutes,
                     profile=args.profile,
+                    theme=args.theme,
                 )
             )
     elif args.command == "design-experiment":
-        _print_result(design_experiment(args.research_question))
+        _print_result(call_action("design_experiment", research_question=args.research_question))
     elif args.command == "propose-research":
-        _print_result(propose_research(source=args.source, research_question=args.question))
+        _print_result(call_action("propose_research", source=args.source, research_question=args.question))
     elif args.command == "research-strategy":
-        _print_result(research_strategy(source=args.source, research_question=args.question))
+        _print_result(call_action("research_strategy", source=args.source, research_question=args.question))
     elif args.command == "generate-idea":
-        _print_result(generate_idea(source=args.source, research_question=args.question))
+        _print_result(call_action("generate_idea", source=args.source, research_question=args.question))
     elif args.command == "zotero":
         _print_result(_handle_zotero(args))
     else:

@@ -12,10 +12,13 @@ description = "A multi-agent research assistant for graduate research workflows.
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27",
+    "questionary>=2.0",
+    "rich>=13.0",
 ]
 
 [project.scripts]
 labcrew = "labcrew.main:main"
+labcrew-mcp = "labcrew.mcp_server:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

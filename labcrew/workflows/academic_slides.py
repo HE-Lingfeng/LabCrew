@@ -170,6 +170,7 @@ def make_academic_html_slides(
     audience: str = "research group",
     duration_minutes: int = 10,
     profile: str = "ai-research",
+    theme: str = "light",
 ) -> dict[str, object]:
     """Render HTML only after producing the reviewable material library and plan."""
     planned = plan_academic_slides(
@@ -184,8 +185,12 @@ def make_academic_html_slides(
     slide_plan = planned["slide_plan"]
     if not isinstance(slide_plan, SlidePlan):
         raise ValueError("Academic slide planning did not return a SlidePlan.")
+    library = planned.get("material_library")
+    materials = list(library.materials) if library is not None else []
     config = load_config()
-    deck = HtmlSlideAdapter(output_dir=config.artifacts_dir / "slides").create_deck(slide_plan)
+    deck = HtmlSlideAdapter(output_dir=config.artifacts_dir / "slides").create_deck(
+        slide_plan, materials=materials, theme=theme,
+    )
     return {**planned, "deck": deck}
 
 
